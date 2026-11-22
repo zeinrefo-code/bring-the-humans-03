@@ -16,7 +16,7 @@
 // Outside the grader's container, MAKEFUN_BOT_DIR and MAKEFUN_OUTPUT_DIR stand in for /bot and /output:
 //   mkdir -p out && MAKEFUN_BOT_DIR=. MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { copyFileSync, mkdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const BOT_DIR = process.env.MAKEFUN_BOT_DIR ?? '/bot';
@@ -27,5 +27,32 @@ try {
   copyFileSync(join(BOT_DIR, 'VIDEO.json'), join(OUTPUT_DIR, 'VIDEO.json'));
 } catch (err) {
   console.error(`VIDEO.json could not be copied from ${BOT_DIR}: ${(err as Error).message}`);
+  process.exit(1);
+}
+
+// The hand-in must be byte for byte the repository's VIDEO.json: compare
+// the source and the copy so a truncated or altered file never reaches
+// the gate unnoticed.
+const sourceBytes = readFileSync(join(BOT_DIR, 'VIDEO.json'));
+const copiedBytes = readFileSync(join(OUTPUT_DIR, 'VIDEO.json'));
+if (!sourceBytes.equals(copiedBytes)) {
+  console.error('The copied VIDEO.json differs from the repository one');
+  process.exit(1);
+}
+
+// Verify what was handed in before finishing: the copied file must parse
+// as JSON and its url must be a full TikTok video address. The gate
+// refuses short share links and the starter's placeholder, so fail loudly
+// here instead of handing in a dead address.
+let handedIn: { url?: unknown };
+try {
+  handedIn = JSON.parse(readFileSync(join(OUTPUT_DIR, 'VIDEO.json'), 'utf8'));
+} catch (err) {
+  console.error(`VIDEO.json in the output is not valid JSON: ${(err as Error).message}`);
+  process.exit(1);
+}
+const videoUrl = handedIn.url;
+if (typeof videoUrl !== 'string' || !/^https:\/\/www\.tiktok\.com\/@[^/]+\/video\/\d+$/.test(videoUrl)) {
+  console.error('VIDEO.json does not name a full TikTok video address (https://www.tiktok.com/@<handle>/video/<id>)');
   process.exit(1);
 }
